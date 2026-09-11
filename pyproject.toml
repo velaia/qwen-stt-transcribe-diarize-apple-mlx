@@ -1,0 +1,26 @@
+[project]
+name = "qwen-stt-transcribe-diarize"
+version = "0.1.0"
+description = "English/German transcription with Qwen3-ASR on Apple Silicon, with speaker diarization and hallucination filtering"
+requires-python = ">=3.10"
+dependencies = [
+    "mlx-qwen3-asr[diarize]==0.4.0",
+    "silero-vad",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::FutureWarning",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "SIM"]
+ignore = ["SIM905"]  # keep whitespace-delimited word lists readable

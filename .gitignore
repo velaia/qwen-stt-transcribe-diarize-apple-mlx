@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+transcripts/
+transcripts_diarized/
+samples/*.wav
+.pytest_cache/
+.ruff_cache/
+
+# Web UI
+data/
+web/node_modules/
+web/dist/

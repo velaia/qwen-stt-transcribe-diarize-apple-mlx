@@ -1,0 +1,8 @@
+# Core: Qwen3-ASR on Apple Silicon via MLX
+mlx-qwen3-asr[diarize]==0.4.0
+
+# Voice activity detection - keeps silence away from the decoder
+silero-vad
+
+# Testing
+pytest
