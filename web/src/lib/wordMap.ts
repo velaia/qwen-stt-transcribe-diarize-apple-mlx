@@ -5,10 +5,26 @@
 // Punctuation stays attached to the PRECEDING word: a matched token's span
 // is extended to swallow any immediately-following run of non-alphanumeric,
 // non-whitespace characters (",", ".", "?!", closing quotes, ...). A token
-// that cannot be found forward of the cursor is skipped entirely — it gets
-// no span and the cursor does not move.
+// only matches as a whole word; one that cannot be found forward of the
+// cursor is skipped entirely — it gets no span and the cursor does not move.
 
 import type { Word } from './types';
+
+const WORD_CHAR = /[\p{L}\p{N}]/u;
+
+// Plain substring search put "the" inside "then" and "a" inside "Astra",
+// splitting the word and shifting every later span in the segment
+// (16 of 24,525 words on a 2.5-hour podcast).
+function indexOfWholeWord(haystack: string, needle: string, from: number): number {
+  let idx = haystack.indexOf(needle, from);
+  while (idx !== -1) {
+    const before = idx > 0 ? haystack[idx - 1] : '';
+    const after = haystack[idx + needle.length] ?? '';
+    if (!WORD_CHAR.test(before) && !WORD_CHAR.test(after)) return idx;
+    idx = haystack.indexOf(needle, idx + 1);
+  }
+  return -1;
+}
 
 export interface TextChunk {
   kind: 'gap';
@@ -25,7 +41,7 @@ export interface WordChunk {
 
 export type Chunk = TextChunk | WordChunk;
 
-const TRAILING_PUNCT = /[^\sA-Za-z0-9À-ÖØ-öø-ÿ]/;
+const TRAILING_PUNCT = /[^\s\p{L}\p{N}]/u;
 
 export function mapWordsToChunks(
   text: string,
@@ -46,7 +62,7 @@ export function mapWordsToChunks(
     const token = words[i].text;
     if (!token) continue;
     const needle = token.toLowerCase();
-    const idx = lower.indexOf(needle, cursor);
+    const idx = indexOfWholeWord(lower, needle, cursor);
     if (idx === -1) continue; // unmatched token: skip, cursor unchanged
 
     if (idx > cursor) {

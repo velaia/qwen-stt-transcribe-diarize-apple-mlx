@@ -97,6 +97,111 @@ to shorten that.
 report. Also available: `txt`, `srt`, `vtt`, `json`, or `all`. `json` carries
 word-level timings and every rejected segment with its reason.
 
+## Web UI
+
+A browser front end (`web/`, Svelte 5) sits on top of the same pipeline,
+served by `server/` (FastAPI) as a single process. It is not a different
+tool — it calls the same `qstt` package the CLI does.
+
+Upload any audio or video file by drag-and-drop, several at once, and watch
+job progress live. The library supports full-text search (umlaut/ß-insensitive)
+and tags. The transcript view stays synced to the player: click any word to
+jump to it, the current word is highlighted as it plays, and the view
+auto-follows playback — scroll away manually and a "Follow" pill appears to
+snap back. A speaker-coloured scrubber sits under the player, and `/` opens
+in-transcript search. Speaker labels are renameable, and the rename applies to
+downloads too. Title, notes and tags are editable; a transcript can be
+re-run with new settings, and speaker smoothing can be re-tuned instantly
+without re-running the model. Downloads come in md/txt/srt/vtt/json, and
+filtered segments are listed the same way the CLI lists them, for review.
+Video files (mp4/mov/m4v/webm) get an optional "Video" toggle instead of
+audio-only playback. Light and dark themes, and it works on a phone.
+
+### Setup and running
+
+```bash
+./setup.sh
+```
+
+now also builds the frontend when `npm` is available (or build it by hand:
+`cd web && npm ci && npm run build`). Then:
+
+```bash
+./serve.py
+```
+
+and open `http://localhost:8765` on the Mac, or `http://<mac-ip>:8765` from a
+phone on the same Wi-Fi (`ipconfig getifaddr en0` prints the Mac's IP).
+
+**Security note:** the server binds to `0.0.0.0` with **no authentication**.
+Anyone on the same network can read, download and delete transcripts. Use
+`./serve.py --host 127.0.0.1` to keep it reachable only from the Mac itself.
+
+Existing CLI transcripts can be imported instead of re-running the model:
+
+```bash
+./serve.py import transcripts/episode.json --media episode.mp3
+```
+
+### Where data lives
+
+```
+data/qstt.db                      SQLite catalog
+data/items/<id>/original.*        the upload, untouched
+data/items/<id>/audio.m4a         playback proxy (AAC mono, 64 kbps)
+data/items/<id>/result.raw.json   pipeline output, unsmoothed
+data/items/<id>/result.json       smoothed result served to the UI
+```
+
+Override the location with `QSTT_DATA`; deleting a transcript in the UI
+removes its whole `data/items/<id>/` folder.
+
+### Design notes
+
+- **One job at a time, FIFO.** Parallel decoding was measured not to help on
+  this hardware — see [Speed](#speed) — so the web UI doesn't pretend
+  otherwise.
+- **VAD can't be turned off, and language is still locked to English or
+  German**, from the UI exactly as from the CLI. These are not settings, they
+  are the reason the tool doesn't hallucinate text (see above).
+- **The server stores the unsmoothed result and smooths on read.** Merging
+  turns during smoothing can't be undone, so keeping the raw result is what
+  makes re-smoothing from the UI reversible — turn the sliders as much as you
+  like, nothing is ever lost.
+- **Every upload gets a 64 kbps mono AAC playback proxy**, served with HTTP
+  Range so playback and seeking work before the whole file has downloaded. The
+  browser caches it in **IndexedDB**, not the Cache API, because Service
+  Workers don't exist on a plain-http LAN origin — after the first load,
+  seeks come from the local cache instead of the network.
+- **Downloads are rendered by the same `qstt/writers.py` the CLI uses.** The
+  web UI does not have its own copy of the formatting logic to drift out of
+  sync.
+
+### Development
+
+```bash
+./serve.py               # backend on 8765
+cd web && npm run dev    # Vite on 5173, proxies /api to 8765
+```
+
+`npm run check` runs `svelte-check`. The full API and architecture are
+documented in `docs/webui-contract.md`.
+
+### Measured
+
+M1 Max, Chromium, served from localhost. Over Wi-Fi the streamed-seek figure
+will be higher; the IndexedDB-cached one will not, since it never touches the
+network.
+
+| Measurement | Result |
+|---|---|
+| Downloads vs CLI output for the same options (3 samples x 5 formats) | identical text and timings; speaker labels use the names shown in the UI |
+| Render of a 2h25m transcript (24,748 word spans, 314 turns) | 354 ms |
+| Transcript JSON transfer (3.7 MB, gzip) | 347 KB, 18 ms |
+| Seek latency, streamed over HTTP Range (median of 10) | 3.5 ms |
+| Seek latency, cached in IndexedDB (median of 10) | 1.4 ms |
+| Playback proxy for a 349 MB / 2h25m MP3 | 72 MB, built in 55 s |
+
 ## Speed
 
 Measured on an M1 Max (64 GB), 10 minutes of podcast audio, VAD and language
@@ -189,8 +294,9 @@ transcript
 | `qstt/pipeline.py` | Orchestration and speaker attribution |
 | `qstt/parallel.py` | Process sharding for long files |
 | `qstt/writers.py` | txt / md / srt / vtt / json |
-
 | `qstt/smooth.py` | Suppresses diarization jitter |
+| `server/` | FastAPI backend for the [web UI](#web-ui): jobs, catalog, media proxy |
+| `web/` | Svelte 5 frontend for the web UI: upload, library, synced transcript view |
 
 Speaker turns are rebuilt from the **original punctuated transcript**, not by
 joining aligner tokens, so commas and full stops survive diarization.
@@ -228,10 +334,12 @@ purely a post-processing concern.
 ./.venv/bin/python -m pytest tests/ -q
 ```
 
-55 tests covering the guards: that genuine English and German survive, that
+126 tests covering the guards: that genuine English and German survive, that
 umlauts and ß are never mistaken for a foreign script, that bare interjections
 are kept by default, and that no code path can return a language outside the
-allowed pair.
+allowed pair. The web UI's own tests (`test_server_*.py`) run against a fake
+transcription engine, so the full suite runs in seconds and never loads the
+model.
 
 ## Notes and limits
 

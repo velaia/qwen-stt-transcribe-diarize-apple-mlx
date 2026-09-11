@@ -89,9 +89,6 @@ def cmd_import(argv: list[str]) -> int:
     web_opts["diarize"] = bool(result.speakers)
     smoothing = jobs.smoothing_from_web_options(web_opts)
 
-    db.create(item_id=item_id, title=title, source_filename=source_filename,
-              options=web_opts, smoothing=smoothing)
-    db.update_fts(item_id, filename=source_filename)
     results.write_raw_result(item_dir, result)
 
     probed_duration = media_kind = None
@@ -114,7 +111,13 @@ def cmd_import(argv: list[str]) -> int:
 
     smoothed, json_text = results.build_smoothed(item_dir / "result.raw.json", smoothing)
     results.write_result_files(item_dir, json_text)
-    db.update_fts(item_id, body=results.plain_text_body(smoothed))
+
+    # The row appears only once every file is in place. Created earlier, it
+    # would sit in the library as 'queued' for the length of the transcode,
+    # and a server restart in that window would queue it for transcription.
+    db.create(item_id=item_id, title=title, source_filename=source_filename,
+              options=web_opts, smoothing=smoothing)
+    db.update_fts(item_id, filename=source_filename, body=results.plain_text_body(smoothed))
 
     db.update(
         item_id,

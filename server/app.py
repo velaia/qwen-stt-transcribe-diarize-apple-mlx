@@ -14,6 +14,7 @@ from .events import EventBus
 from .jobs import JobWorker, PrepWorker, recover
 
 WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
+IMMUTABLE = "public, max-age=31536000, immutable"
 
 
 def create_app(data_dir: str | Path | None = None, engine_factory=None) -> FastAPI:
@@ -54,8 +55,13 @@ def create_app(data_dir: str | Path | None = None, engine_factory=None) -> FastA
             except ValueError:
                 candidate = WEB_DIST / "index.html"
             if full_path and candidate.is_file():
+                if full_path.startswith("assets/"):
+                    # Vite fingerprints these names; a file never changes in place.
+                    return FileResponse(candidate, headers={"Cache-Control": IMMUTABLE})
                 return FileResponse(candidate)
-            return FileResponse(WEB_DIST / "index.html")
+            # index.html names the current bundle. Cached heuristically, a
+            # browser kept running the previous build after an update.
+            return FileResponse(WEB_DIST / "index.html", headers={"Cache-Control": "no-cache"})
     else:
         @app.get("/")
         async def hint():

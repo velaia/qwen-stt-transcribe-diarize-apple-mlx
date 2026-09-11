@@ -18,7 +18,8 @@
   }
 
   $effect(() => {
-    if (editing !== null) editInputEl?.focus();
+    // Selected, so typing replaces the placeholder name instead of appending.
+    if (editing !== null) editInputEl?.select();
   });
 
   function commit(label: string) {

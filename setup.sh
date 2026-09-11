@@ -19,8 +19,17 @@ else
 fi
 
 echo
+if command -v npm >/dev/null; then
+  echo "Building web UI..."
+  (cd web && npm ci && npm run build)
+else
+  echo "npm not found - the web UI needs Node/npm (brew install node); the CLI works without it."
+fi
+
+echo
 echo "Done. Try:"
 echo "  ./.venv/bin/python transcribe.py your-audio.m4a"
+echo "  ./serve.py                              # web UI at http://localhost:8765"
 echo
 echo "For speaker labels (--diarize) you also need to:"
 echo "  1. Accept terms at https://huggingface.co/pyannote/speaker-diarization-community-1"

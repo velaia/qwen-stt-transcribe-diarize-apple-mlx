@@ -48,8 +48,10 @@
       const t = mediaEl.currentTime;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
       objectUrl = url;
-      mediaEl.src = url;
-      mediaEl.currentTime = t;
+      const el = mediaEl;
+      el.src = url;
+      // Safari ignores a currentTime set before the new source has metadata.
+      el.addEventListener('loadedmetadata', () => (el.currentTime = t), { once: true });
       cacheStatus = 'cached';
     };
     if (!mediaEl || mediaEl.paused) {
@@ -142,7 +144,11 @@
     }
   }
 
-  function drawMarker() {
+  function inkColor(): string {
+    return getComputedStyle(document.documentElement).getPropertyValue('--ink').trim() || '#222';
+  }
+
+  function drawMarker(ink = inkColor()) {
     if (!markerCanvas || !timelineWidth) return;
     const dpr = window.devicePixelRatio || 1;
     if (markerCanvas.width !== timelineWidth * dpr || markerCanvas.height !== timelineHeight * dpr) {
@@ -155,18 +161,12 @@
     ctx.clearRect(0, 0, timelineWidth, timelineHeight);
     const frac = hoverFraction ?? (duration ? (mediaEl?.currentTime ?? 0) / duration : 0);
     const x = frac * timelineWidth;
-    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--ink') || '#222';
+    ctx.strokeStyle = ink;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(x, 0);
     ctx.lineTo(x, timelineHeight);
     ctx.stroke();
-  }
-
-  let rafId = 0;
-  function markerLoop() {
-    drawMarker();
-    rafId = requestAnimationFrame(markerLoop);
   }
 
   $effect(() => {
@@ -182,9 +182,25 @@
     return () => ro.disconnect();
   });
 
+  // Redraw every frame only while the position moves on its own (playing) or
+  // under a finger (dragging) -- an always-on loop costs battery on a phone.
   $effect(() => {
-    markerLoop();
-    return () => cancelAnimationFrame(rafId);
+    if (!playback.isPlaying && !dragging) return;
+    const ink = inkColor();
+    let raf = 0;
+    const loop = () => {
+      drawMarker(ink);
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  });
+
+  // Otherwise once per discrete change: a seek while paused, a resize.
+  $effect(() => {
+    void playback.currentTime;
+    void timelineWidth;
+    drawMarker();
   });
 
   function fractionFromEvent(e: PointerEvent): number {

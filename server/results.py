@@ -6,6 +6,7 @@ import copy
 import gzip
 import json
 import os
+import re
 from pathlib import Path
 
 from qstt import writers
@@ -81,9 +82,30 @@ def apply_speaker_names(result: Result, names: dict[str, str]) -> Result:
     return result
 
 
+_DEFAULT_LABEL_RE = re.compile(r"^SPEAKER_0*(\d+)$", re.IGNORECASE)
+
+
+def default_speaker_name(label: str) -> str:
+    """SPEAKER_00 -> "Speaker 1": the name the UI shows until one is set.
+
+    Must match defaultSpeakerName() in web/src/lib/speakerColor.ts.
+    """
+    m = _DEFAULT_LABEL_RE.match(label)
+    return f"Speaker {int(m.group(1)) + 1}" if m else label
+
+
+def display_names(result: Result, speaker_names: dict[str, str]) -> dict[str, str]:
+    """Every speaker's name as the UI shows it: the user's rename, else the default."""
+    return {s: speaker_names.get(s) or default_speaker_name(s) for s in result.speakers}
+
+
 def render_download(result: Result, fmt: str, title: str, speaker_names: dict[str, str]) -> str:
-    """Render one of the CLI's output formats, with speaker names and title applied."""
-    result = apply_speaker_names(result, speaker_names)
+    """Render one of the CLI's output formats, with speaker names and title applied.
+
+    Unrenamed speakers get their default display name too: a download mixing
+    "Anna" with a raw "SPEAKER_01" would not match what the transcript view shows.
+    """
+    result = apply_speaker_names(result, display_names(result, speaker_names))
     result.source = title.replace("/", "_")
     return writers.WRITERS[fmt](result)
 

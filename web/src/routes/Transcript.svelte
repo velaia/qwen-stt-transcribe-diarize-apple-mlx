@@ -260,7 +260,7 @@
           aria-label="Transcript title"
         />
         <div class="meta-line">
-          {formatDuration(detail.duration)} · {detail.language ?? '—'} · {speakers.length} speaker{speakers.length === 1 ? '' : 's'}
+          {formatDuration(detail.duration)} · {detail.language ?? '—'}{speakers.length ? ` · ${speakers.length} speaker${speakers.length === 1 ? '' : 's'}` : ''}
           {#if speechRatio != null} · {Math.round(speechRatio * 100)}% speech{/if}
         </div>
         <TagInput tags={detail.tags} onchange={onTagsChange} />
@@ -598,8 +598,11 @@
   }
 
   @media (max-width: 640px) {
+    /* Title, tags and four actions stack to ~40% of a phone screen; pinned,
+       that leaves a strip between header and player to read in. */
     .page-header {
       flex-wrap: wrap;
+      position: static;
     }
 
     .header-actions {

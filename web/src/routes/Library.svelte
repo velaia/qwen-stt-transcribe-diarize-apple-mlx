@@ -115,6 +115,12 @@
     }
   }
 
+  // An upload's placeholder row gives way as soon as its real row is listed,
+  // instead of both showing until the placeholder's timer runs out.
+  const pendingUploads = $derived(
+    uploadsStore.active.filter((u) => !(u.summary && items.some((i) => i.id === u.summary?.id)))
+  );
+
   function speakerCount(item: Summary): number {
     return item.speakers?.length ?? 0;
   }
@@ -160,9 +166,9 @@
     {/if}
   </div>
 
-  {#if uploadsStore.active.length > 0}
+  {#if pendingUploads.length > 0}
     <ul class="rows uploading">
-      {#each uploadsStore.active as u (u.clientId)}
+      {#each pendingUploads as u (u.clientId)}
         <li class="row upload-row">
           <div class="row-main">
             <span class="row-title">{u.file.name}</span>
@@ -213,7 +219,7 @@
                 <span class="row-error">{err ?? 'Failed'}</span>
               {:else}
                 <span class="row-sub">
-                  {formatDuration(item.duration)} · {item.language ?? '—'} · {speakerCount(item)} speaker{speakerCount(item) === 1 ? '' : 's'}
+                  {formatDuration(item.duration)} · {item.language ?? '—'}{speakerCount(item) ? ` · ${speakerCount(item)} speaker${speakerCount(item) === 1 ? '' : 's'}` : ''}
                 </span>
               {/if}
               <span class="row-date">{formatRelativeDate(item.updated_at)}</span>
