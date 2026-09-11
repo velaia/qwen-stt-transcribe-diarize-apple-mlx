@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import time
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -20,6 +21,13 @@ from .audio import SAMPLE_RATE, duration_sec, load_audio, slice_audio
 from .vad import Span, detect_speech, speech_ratio
 
 DEFAULT_MODEL = "Qwen/Qwen3-ASR-1.7B"
+
+# progress(stage, fraction) -- see Transcriber.run_array.
+Progress = Callable[[str, "float | None"], None]
+
+
+def _no_progress(stage: str, fraction: float | None) -> None:
+    pass
 
 
 @dataclass
@@ -72,6 +80,9 @@ class Options:
     smooth_max_words: int = 3
     smooth_max_dur: float = 1.2
     smooth_max_gap: float = 2.0
+    # Off leaves speaker-attributed but unmerged segments, for callers that
+    # store them and smooth later: merging cannot be undone, re-smoothing can.
+    smooth: bool = True
     context: str = ""
     aggressive_filler: bool = False
     # Below this share of foreign characters the segment is kept and the stray
@@ -185,17 +196,31 @@ class Transcriber:
 
     # -- main ------------------------------------------------------------
 
-    def run(self, path: str | Path) -> Result:
+    def run(self, path: str | Path, progress: Progress | None = None) -> Result:
         """Transcribe a file from disk."""
+        (progress or _no_progress)("decode", None)
         audio = load_audio(path)
         self._log(f"{Path(path).name}: {duration_sec(audio):.1f}s")
-        return self.run_array(audio, source=str(path))
+        return self.run_array(audio, source=str(path), progress=progress)
 
-    def run_array(self, audio: np.ndarray, *, source: str = "<array>") -> Result:
-        """Transcribe already-decoded mono 16 kHz audio."""
+    def run_array(
+        self,
+        audio: np.ndarray,
+        *,
+        source: str = "<array>",
+        progress: Progress | None = None,
+    ) -> Result:
+        """Transcribe already-decoded mono 16 kHz audio.
+
+        `progress(stage, fraction)` is called as work advances, with fraction
+        None where a stage cannot measure itself. It may raise to abandon the
+        run -- that is how callers cancel, since it is called between spans.
+        """
         opts = self.opts
         total = duration_sec(audio)
+        report = progress or _no_progress
 
+        report("vad", None)
         if opts.vad:
             spans, backend = detect_speech(
                 audio,
@@ -215,16 +240,19 @@ class Transcriber:
             backend = "off"
 
         if not spans:
+            report("done", 1.0)
             return Result(
                 source, total, opts.fallback_language, [], [], [],
                 {"vad": backend, "speech_ratio": 0.0, "note": "no speech detected"},
             )
 
+        report("language", None)
         file_lang, how = self._detect_language(audio, spans)
         self._log(f"language: {file_lang} ({how})")
 
         turns: list[dict] = []
         if opts.diarize:
+            report("diarize", None)
             turns = self._speaker_turns(audio)
 
         segments: list[Segment] = []
@@ -233,6 +261,7 @@ class Transcriber:
         want_ts = opts.timestamps or opts.diarize
 
         for i, span in enumerate(spans, 1):
+            report("transcribe", (i - 1) / len(spans))
             clip = slice_audio(audio, span.start, span.end)
             if len(clip) < SAMPLE_RATE // 4:
                 continue
@@ -291,9 +320,10 @@ class Transcriber:
             )
 
         if turns:
+            segments = self._attach_speakers(segments, turns)
+        if turns and opts.smooth:
             from .smooth import smooth
 
-            segments = self._attach_speakers(segments, turns)
             before = len(segments)
             segments = smooth(
                 segments,
@@ -313,6 +343,7 @@ class Transcriber:
             "reject_reasons": dict(reasons),
             "language_decision": how,
         }
+        report("done", 1.0)
         return Result(source, total, file_lang, segments, rejections, speakers, stats)
 
     def _decode_mixed(self, clip: np.ndarray, default: str, want_ts: bool):

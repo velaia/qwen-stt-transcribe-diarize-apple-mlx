@@ -4,5 +4,11 @@ mlx-qwen3-asr[diarize]==0.4.0
 # Voice activity detection - keeps silence away from the decoder
 silero-vad
 
+# Web UI (./serve.py)
+fastapi
+uvicorn[standard]
+python-multipart
+
 # Testing
 pytest
+httpx

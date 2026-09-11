@@ -12,41 +12,11 @@ second.
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
 from qstt import writers
-from qstt.pipeline import Rejection, Result, Segment
 from qstt.smooth import smooth
-
-
-def load(path: Path) -> Result:
-    data = json.loads(path.read_text(encoding="utf-8"))
-    segments = [
-        Segment(
-            start=float(s["start"]),
-            end=float(s["end"]),
-            text=s.get("text", ""),
-            speaker=s.get("speaker"),
-            language=s.get("language", ""),
-            words=s.get("words") or [],
-        )
-        for s in data.get("segments", [])
-    ]
-    rejections = [
-        Rejection(float(r["start"]), float(r["end"]), r.get("text", ""), r["reason"])
-        for r in data.get("rejected", [])
-    ]
-    return Result(
-        source=data.get("source", str(path)),
-        duration=float(data.get("duration_sec", 0.0)),
-        language=data.get("language", ""),
-        segments=segments,
-        rejections=rejections,
-        speakers=data.get("speakers", []),
-        stats=data.get("stats", {}),
-    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -68,7 +38,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: no such file: {args.json_file}", file=sys.stderr)
         return 1
 
-    result = load(args.json_file)
+    result = writers.load_result(args.json_file)
     before = len(result.segments)
     result.segments = smooth(
         result.segments,

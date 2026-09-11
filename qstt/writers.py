@@ -111,6 +111,40 @@ def to_json(result) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
 
 
+def load_result(src):
+    """Rebuild a Result from `to_json` output: a path, a JSON string's dict, or a dict."""
+    from .pipeline import Rejection, Result, Segment
+
+    if isinstance(src, dict):
+        data, fallback = src, "<dict>"
+    else:
+        data, fallback = json.loads(Path(src).read_text(encoding="utf-8")), str(src)
+    segments = [
+        Segment(
+            start=float(s["start"]),
+            end=float(s["end"]),
+            text=s.get("text", ""),
+            speaker=s.get("speaker"),
+            language=s.get("language", ""),
+            words=s.get("words") or [],
+        )
+        for s in data.get("segments", [])
+    ]
+    rejections = [
+        Rejection(float(r["start"]), float(r["end"]), r.get("text", ""), r["reason"])
+        for r in data.get("rejected", [])
+    ]
+    return Result(
+        source=data.get("source", fallback),
+        duration=float(data.get("duration_sec", 0.0)),
+        language=data.get("language", ""),
+        segments=segments,
+        rejections=rejections,
+        speakers=data.get("speakers", []),
+        stats=data.get("stats", {}),
+    )
+
+
 WRITERS = {
     "txt": to_txt,
     "md": to_markdown,
