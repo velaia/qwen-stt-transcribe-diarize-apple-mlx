@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "qstt-web",
+      "runtimeExecutable": "/Users/daniel/git/qwen-stt-transcribe-diarize/.venv/bin/python",
+      "runtimeArgs": ["/Users/daniel/git/qwen-stt-transcribe-diarize/serve.py", "--port", "8765"],
+      "port": 8765
+    }
+  ]
+}
