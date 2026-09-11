@@ -7,6 +7,9 @@ samples/*.wav
 .pytest_cache/
 .ruff_cache/
 
+# Local editor/agent config
+.claude/
+
 # Web UI
 data/
 web/node_modules/
