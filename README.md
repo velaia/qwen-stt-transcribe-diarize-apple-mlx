@@ -202,6 +202,39 @@ network.
 | Seek latency, cached in IndexedDB (median of 10) | 1.4 ms |
 | Playback proxy for a 349 MB / 2h25m MP3 | 72 MB, built in 55 s |
 
+## Leveling speakers
+
+Interviews often pair a loud host with a quiet guest. Normalizing the whole file
+moves both voices together and keeps the gap between them. `level.py` changes
+the gain over time instead, turning the loud speaker down and the quiet one up,
+and then sets the result to a podcast loudness target.
+
+```bash
+./level.py episode.mp3                                  # -> episode.leveled.mp3
+./level.py episode.mp3 -t transcripts/episode.json      # one gain per diarized speaker
+./level.py episode.mp3 -o episode.m4a --target -19      # Apple's spec is -16, -19 is gentler
+```
+
+- **Without a transcript**, the running speech level is tracked with a 3-second
+  median. The median switches cleanly when a different speaker starts talking
+  instead of smearing across the change.
+- **With a JSON transcript** (`transcribe.py -f json`), each speaker is measured
+  over everything they said and gets one gain. Their own dynamics are left
+  intact. `--turn-trim` (default 4 dB) also corrects a single turn where
+  someone leaned away from the mic.
+- Pauses take the gain of the speech around them, so room tone is not pumped
+  up between sentences. Changes fade over `--smooth` seconds (0.5 by default).
+- Loudness is measured with K-weighting, as EBU R128 does, so a deep voice
+  isn't judged louder than it sounds. A limiter keeps the boosted voice from
+  clipping. If the limiter pulls the output off target, one corrective pass
+  brings it back.
+- Boost and cut are capped at 18 dB each (`--max-boost`, `--max-cut`).
+
+On a synthetic interview with a 20 LU gap between host and guest, the gap after
+leveling is 0.1 LU in both modes, and the output lands at -16.0 LUFS. This
+works with plain `python3`, `numpy` and `ffmpeg`, so leveling does not need the
+MLX stack and runs on any machine.
+
 ## Speed
 
 Measured on an M1 Max (64 GB), 10 minutes of podcast audio, VAD and language
